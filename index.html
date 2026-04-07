@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anime Cover Viewer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    :root {
+      --bg-primary: #0f0f14;
+      --bg-secondary: #1a1a24;
+      --bg-tertiary: #252532;
+      --text-primary: #e8e8ed;
+      --text-secondary: #8888a0;
+      --accent: #7c5cff;
+      --accent-hover: #9b80ff;
+      --border: #3a3a4a;
+      --card-bg: #1e1e2a;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+    
+    .drop-zone {
+      border: 3px dashed var(--border);
+      border-radius: 16px;
+      padding: 60px 40px;
+      text-align: center;
+      margin: 40px auto;
+      max-width: 600px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      background: var(--bg-secondary);
+    }
+    
+    .drop-zone.drag-over, .drop-zone:hover {
+      border-color: var(--accent);
+      background: var(--bg-tertiary);
+    }
+    
+    .drop-zone h2 {
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+    
+    .drop-zone p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+    
+    .drop-zone.hidden { display: none; }
+    
+    .controls {
+      display: none;
+      padding: 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .controls.visible { display: block; }
+    
+    .controls-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+    
+    .search-box {
+      flex: 1;
+      min-width: 250px;
+    }
+    
+    .search-box input {
+      width: 100%;
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 0.95rem;
+    }
+    
+    .search-box input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    
+    .stats {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      padding: 0 20px;
+    }
+    
+    .api-status { margin-left: auto; }
+    
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px;
+      padding-left: 40px;
+      padding-right: 40px;
+    }
+    
+    .section {
+      margin-bottom: 40px;
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    .section-header h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    
+    .section-header .count {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+    
+    .section-header .toggle {
+      color: var(--text-secondary);
+      transition: transform 0.2s;
+    }
+    
+    .section.collapsed .toggle { transform: rotate(-90deg); }
+    .section.collapsed .anime-grid { display: none; }
+    .section.filter-hidden { display: none; }
+    
+    .anime-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 20px;
+    }
+    
+    .anime-card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+    }
+    
+    .anime-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(124, 92, 255, 0.2);
+    }
+    
+    .anime-card.hidden { display: none; }
+    
+    .anime-card .cover {
+      aspect-ratio: 3/4;
+      background: var(--bg-tertiary);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .anime-card .cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .anime-card .cover img.loaded { opacity: 1; }
+    
+    .anime-card .cover .placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-size: 2rem;
+    }
+    
+    .anime-card .cover .spinner {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-tertiary);
+    }
+    
+    .spinner::after {
+      content: '';
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .anime-card .info {
+      padding: 12px;
+    }
+    
+    .anime-card .title {
+      font-size: 0.8rem;
+      font-weight: 500;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .anime-card .match-info {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .anime-card .status-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      z-index: 10;
+    }
+    
+    .anime-card .status-badge.loading { background: #fbbf24; color: #000; }
+    .anime-card .status-badge.queued { background: #6b7280; color: #fff; }
+    .anime-card .status-badge.rate-limited { background: #f97316; color: #fff; }
+    .anime-card .status-badge.error { background: #ef4444; color: #fff; }
+    .anime-card .status-badge.success { background: #22c55e; color: #fff; }
+    
+    .api-status {
+      font-size: 0.85rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      background: var(--bg-tertiary);
+    }
+    
+    .api-status.ok { color: #22c55e; }
+    .api-status.rate-limited { background: #7f1d1d; color: #fca5a5; }
+    .api-status.error { background: #7f1d1d; color: #fca5a5; }
+    
+    .loading-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: var(--accent);
+      z-index: 1000;
+      transition: width 0.3s;
+    }
+    
+    .no-results {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+    
+    #file-input { display: none; }
+    
+    .error-toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ff4d4d;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .error-toast.visible { opacity: 1; }
+    
+    @media (max-width: 600px) {
+      .anime-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+      .controls-inner { flex-direction: column; }
+      .sort-controls { flex-wrap: wrap; justify-content: center; }
+    }
+  </style>
+</head>
+  <body>
+    <div class="drop-zone" id="drop-zone">
+    <h2>Drop anime.txt here</h2>
+    <p>or click to select a file</p>
+  </div>
+  
+  <input type="file" id="file-input" accept=".txt">
+  
+  <div class="controls" id="controls">
+    <div class="controls-inner">
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="Filter anime...">
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="api-status" id="api-status"></div>
+    </div>
+  </div>
+  
+  <div class="container" id="container"></div>
+  <div class="error-toast" id="error-toast"></div>
+  
+  <script>
+    const ANILIST_API = 'https://graphql.anilist.co';
+    const CACHE_PREFIX = 'anime_viewer_';
+    const CACHE_DAYS = 7;
+    
+    let animeData = [];
+    let currentFilter = '';
+    let observer = null;
+    let observedCount = 0;
+    let apiStatus = { state: 'ok', lastError: null, backoffUntil: 0 };
+    let rateLimitCount = 0;
+    let requestQueue = [];
+    let backoffTimeoutId = null;
+    let retryTimeouts = {};
+    let retryQueue = [];
+    let isProcessingQueue = false;
+    const REQUEST_DELAY = 1000;
+    const BACKOFF_DELAY = 2000;
+    
+    const $ = id => document.getElementById(id);
+    const $$ = sel => document.querySelectorAll(sel);
+    
+    const dropZone = $('drop-zone');
+    const fileInput = $('file-input');
+    const controls = $('controls');
+    const container = $('container');
+    const searchInput = $('search-input');
+    const statsEl = $('stats');
+    const errorToast = $('error-toast');
+    const apiStatusEl = $('api-status');
+    
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
+    });
+    
+    searchInput.addEventListener('input', e => {
+      currentFilter = e.target.value.toLowerCase();
+      applyFilters();
+    });
+    
+    async function handleFile(file) {
+      try {
+        const text = await file.text();
+        animeData = parseAnimeList(text);
+        dropZone.classList.add('hidden');
+        controls.classList.add('visible');
+        apiStatus = { state: 'ok', lastError: null };
+        updateApiStatusEl();
+        render();
+        setupObserver();
+        searchInput.focus();
+      } catch (err) {
+        showError('Failed to parse file');
+        console.error(err);
+      }
+    }
+    
+    function parseAnimeList(text) {
+      const lines = text.split('\n');
+      const sections = [];
+      let currentSection = null;
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        
+        const sectionMatch = trimmed.match(/^\[([^\]]+)\]$/);
+        if (sectionMatch) {
+          if (currentSection && currentSection.anime.length > 0) {
+            sections.push(currentSection);
+          }
+          currentSection = { name: sectionMatch[1], anime: [] };
+          continue;
+        }
+        
+        if (trimmed.startsWith('TODO')) continue;
+        
+        if (!currentSection) continue;
+        
+        currentSection.anime.push({
+          original: trimmed,
+          name: trimmed,
+          cover: null,
+          matchedTitle: null,
+          loading: true
+        });
+      }
+      
+      if (currentSection && currentSection.anime.length > 0) {
+        sections.push(currentSection);
+      }
+      
+      return sections;
+    }
+    
+    function normalizeTitle(title) {
+      return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    function levenshtein(a, b) {
+      const matrix = [];
+      for (let i = 0; i <= b.length; i++) {
+        matrix[i] = [i];
+      }
+      for (let j = 0; j <= a.length; j++) {
+        matrix[0][j] = j;
+      }
+      for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+          if (b.charAt(i - 1) === a.charAt(j - 1)) {
+            matrix[i][j] = matrix[i - 1][j - 1];
+          } else {
+            matrix[i][j] = Math.min(
+              matrix[i - 1][j - 1] + 1,
+              matrix[i][j - 1] + 1,
+              matrix[i - 1][j] + 1
+            );
+          }
+        }
+      }
+      return matrix[b.length][a.length];
+    }
+    
+    function getCacheKey(title) {
+      return CACHE_PREFIX + normalizeTitle(title).replace(/\s+/g, '_');
+    }
+    
+    function getCache(key) {
+      try {
+        const data = localStorage.getItem(key);
+        if (!data) return null;
+        const { value, timestamp } = JSON.parse(data);
+        const daysPassed = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
+        if (daysPassed > CACHE_DAYS) return null;
+        return value;
+      } catch {
+        return null;
+      }
+    }
+    
+    function setCache(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify({ value, timestamp: Date.now() }));
+      } catch {}
+    }
+    
+    async function fetchFromAniList(title) {
+      const cacheKey = getCacheKey(title);
+      const cached = getCache(cacheKey);
+      if (cached) return cached;
+      
+      const query = `
+        query ($search: String) {
+          Page(perPage: 5) {
+            media(search: $search, type: ANIME) {
+              id
+              title {
+                romaji
+                english
+                native
+              }
+              coverImage { large }
+              siteUrl
+              season
+              seasonYear
+            }
+          }
+        }
+      `;
+      
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const response = await fetch(ANILIST_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, variables: { search: title.slice(0, 100) } })
+          });
+          
+          if (response.status === 429) {
+            throw { type: 'rate-limited', attempt };
+          }
+          
+          if (!response.ok) {
+            apiStatus = { state: 'error', lastError: `HTTP ${response.status}` };
+            updateApiStatusEl();
+          }
+          
+          const json = await response.json();
+          if (json.errors) throw new Error(json.errors[0].message);
+          
+          const media = json.data?.Page?.media || [];
+          if (media.length === 0) {
+            setCache(cacheKey, null);
+            return null;
+          }
+          
+          const normalizedSearch = normalizeTitle(title);
+          let bestMatch = null;
+          let bestScore = Infinity;
+          
+          for (const m of media) {
+            const titles = [
+              normalizeTitle(m.title.romaji || ''),
+              normalizeTitle(m.title.english || ''),
+              normalizeTitle(m.title.native || '')
+            ].filter(Boolean);
+            
+            for (const t of titles) {
+              if (t === normalizedSearch) {
+                bestMatch = m;
+                bestScore = 0;
+                break;
+              }
+              
+              const dist = levenshtein(normalizedSearch, t);
+              const score = dist / Math.max(normalizedSearch.length, t.length);
+              
+              if (score < bestScore) {
+                bestScore = score;
+                bestMatch = m;
+              }
+            }
+            if (bestScore === 0) break;
+          }
+          
+          if (bestScore < 0.5) {
+            const result = {
+              cover: bestMatch.coverImage.large,
+              matchedTitle: bestMatch.title.romaji || bestMatch.title.english,
+              year: bestMatch.seasonYear,
+              season: bestMatch.season,
+              url: bestMatch.siteUrl
+            };
+            setCache(cacheKey, result);
+            return result;
+          }
+          
+          setCache(cacheKey, null);
+          return null;
+        } catch (err) {
+          apiStatus = { state: 'error', lastError: err.message };
+          updateApiStatusEl();
+          if (attempt === 2) throw err;
+          await sleep(1000);
+        }
+      }
+    }
+    
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    function updateApiStatusEl() {
+      if (!apiStatusEl) return;
+      
+      if (apiStatus.state === 'ok') {
+        apiStatusEl.textContent = 'API: OK';
+        apiStatusEl.className = 'api-status ok';
+      } else if (apiStatus.state === 'rate-limited') {
+        const remaining = Math.max(0, Math.ceil((apiStatus.backoffUntil - Date.now()) / 1000));
+        if (remaining > 0) {
+          apiStatusEl.textContent = `API: Rate Limited (${remaining}s) | ${rateLimitCount} hits`;
+        } else {
+          apiStatusEl.textContent = `API: Rate Limited | ${rateLimitCount} hits`;
+        }
+        apiStatusEl.className = 'api-status rate-limited';
+      } else {
+        apiStatusEl.textContent = `API: Error - ${apiStatus.lastError}`;
+        apiStatusEl.className = 'api-status error';
+      }
+    }
+    
+    function showError(msg) {
+      errorToast.textContent = msg;
+      errorToast.classList.add('visible');
+      setTimeout(() => errorToast.classList.remove('visible'), 3000);
+    }
+    
+    function setupObserver() {
+      if (observer) observer.disconnect();
+      
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const card = entry.target;
+            const idx = parseInt(card.dataset.idx);
+            const anime = animeData.flatMap(s => s.anime)[idx];
+            if (anime && anime.loading) {
+              queueFetch(card, anime);
+            }
+            observer.unobserve(card);
+          }
+        });
+      });
+      
+      document.querySelectorAll('.anime-card[data-idx]').forEach(card => {
+        observer.observe(card);
+      });
+    }
+    
+    function queueFetch(card, anime) {
+      anime.fetchStatus = 'queued';
+      requestQueue.push({ card, anime });
+      if (!isProcessingQueue) {
+        processQueue();
+      }
+    }
+    
+    function queueRetry(card, anime) {
+      anime.fetchStatus = 'queued';
+      retryQueue.push({ card, anime });
+      if (!isProcessingQueue) {
+        processQueue();
+      }
+    }
+    
+    async function processQueue() {
+      requestQueue = requestQueue.filter(item => {
+        const card = item.card;
+        const isVisible = card.offsetParent !== null && !card.classList.contains('hidden');
+        return isVisible;
+      });
+      
+      retryQueue = retryQueue.filter(item => {
+        const card = item.card;
+        const isVisible = card.offsetParent !== null && !card.classList.contains('hidden');
+        return isVisible;
+      });
+      
+      if (requestQueue.length === 0 && retryQueue.length === 0) {
+        isProcessingQueue = false;
+        return;
+      }
+      
+      if (Date.now() < apiStatus.backoffUntil) {
+        const waitMs = apiStatus.backoffUntil - Date.now();
+        scheduleResume(waitMs);
+        return;
+      }
+      
+      isProcessingQueue = true;
+      
+      if (Date.now() < apiStatus.backoffUntil) {
+        const waitMs = apiStatus.backoffUntil - Date.now();
+        scheduleResume(waitMs);
+        return;
+      }
+      
+      let item;
+      if (retryQueue.length > 0) {
+        item = retryQueue.shift();
+      } else {
+        item = requestQueue.shift();
+      }
+      
+      const { card, anime } = item;
+      
+      const isStillVisible = card.offsetParent !== null && !card.classList.contains('hidden');
+      if (!isStillVisible) {
+        processQueue();
+        return;
+      }
+      
+      anime.loading = true;
+      updateCard(card, anime);
+      
+      await fetchCover(anime);
+      
+      if (anime.rateLimited) {
+        const backoffMs = anime.backoffMs || 2000;
+        apiStatus = { state: 'rate-limited', backoffUntil: Date.now() + backoffMs, lastError: `Backing off for ${Math.ceil(backoffMs/1000)}s` };
+        updateApiStatusEl();
+        
+        rateLimitCount++;
+        
+        retryQueue.push({ card, anime });
+        anime.fetchStatus = 'rate-limited';
+        updateCard(card, anime);
+        scheduleResume(backoffMs);
+        return;
+      }
+      
+      updateCard(card, anime);
+      
+      if (retryQueue.length > 0 || requestQueue.length > 0) {
+        await sleep(BACKOFF_DELAY);
+        processQueue();
+      } else {
+        isProcessingQueue = false;
+        apiStatus = { state: 'ok', backoffUntil: 0, lastError: null };
+        updateApiStatusEl();
+      }
+    }
+    
+    function scheduleResume(delayMs) {
+      if (backoffTimeoutId) clearTimeout(backoffTimeoutId);
+      
+      const countdown = () => {
+        const remaining = Math.max(0, Math.ceil((apiStatus.backoffUntil - Date.now()) / 1000));
+        if (remaining > 0) {
+          apiStatusEl.textContent = `API: Rate Limited (${remaining}s) | ${rateLimitCount} hits`;
+          backoffTimeoutId = setTimeout(countdown, 500);
+        }
+      };
+      
+      backoffTimeoutId = setTimeout(() => {
+        apiStatus = { state: 'ok', backoffUntil: 0, lastError: null };
+        updateApiStatusEl();
+        processQueue();
+      }, delayMs);
+      
+      countdown();
+    }
+    
+    function scheduleRetry(card, anime) {
+      const key = anime.name;
+      if (retryTimeouts[key]) return;
+      
+      const delay = (anime.retryCount || 0) === 0 ? 5000 : Math.min(30000, 5000 * Math.pow(2, anime.retryCount));
+      
+      retryTimeouts[key] = setTimeout(() => {
+        delete retryTimeouts[key];
+        anime.retryCount = (anime.retryCount || 0) + 1;
+        
+        const isVisible = card.offsetParent !== null && !card.classList.contains('hidden');
+        if (isVisible) {
+          anime.fetchStatus = 'queued';
+          anime.loading = false;
+          updateCard(card, anime);
+          queueRetry(card, anime);
+        }
+      }, delay);
+    }
+    
+    async function fetchCover(anime) {
+      try {
+        const result = await fetchFromAniList(anime.name);
+        anime.cover = result?.cover || null;
+        anime.matchedTitle = result?.matchedTitle || null;
+        anime.year = result?.year || extractYear(anime.name);
+        anime.season = result?.season || null;
+        anime.url = result?.url || null;
+        anime.fetchStatus = 'success';
+        anime.rateLimited = false;
+      } catch (err) {
+        if (err.type === 'rate-limited') {
+          anime.fetchStatus = 'rate-limited';
+          anime.rateLimited = true;
+          anime.backoffMs = Math.pow(2, err.attempt + 1) * 1000;
+        } else {
+          anime.cover = null;
+          anime.fetchStatus = 'error';
+          anime.fetchError = err.message;
+          anime.rateLimited = false;
+        }
+      }
+      anime.loading = false;
+    }
+    
+    function updateCard(card, anime) {
+      const img = card.querySelector('.cover img');
+      const spinner = card.querySelector('.spinner');
+      const placeholder = card.querySelector('.placeholder');
+      const matchEl = card.querySelector('.match-info');
+      let badge = card.querySelector('.status-badge');
+      
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'status-badge';
+        card.querySelector('.cover').appendChild(badge);
+      }
+      
+      if (anime.loading) {
+        spinner.style.display = 'flex';
+        img.style.display = 'none';
+        placeholder.style.display = 'none';
+        badge.className = 'status-badge loading';
+        badge.textContent = '...';
+        return;
+      }
+      
+      spinner.style.display = 'none';
+      
+      if (anime.cover) {
+        img.src = anime.cover;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+        img.onload = () => img.classList.add('loaded');
+        badge.className = 'status-badge success';
+        badge.textContent = '✓';
+      } else {
+        img.style.display = 'none';
+        placeholder.style.display = 'flex';
+        
+        if (anime.fetchStatus === 'queued') {
+          badge.className = 'status-badge queued';
+          badge.textContent = '⏳';
+          matchEl.textContent = 'In queue...';
+        } else if (anime.fetchStatus === 'rate-limited') {
+          badge.className = 'status-badge error';
+          badge.textContent = '⚠';
+          matchEl.textContent = 'Rate limited, retrying...';
+          scheduleRetry(card, anime);
+        } else if (anime.fetchStatus === 'error') {
+          badge.className = 'status-badge error';
+          badge.textContent = '✗';
+          matchEl.textContent = anime.fetchError || 'Not found';
+        } else {
+          badge.className = 'status-badge';
+          badge.textContent = '';
+        }
+      }
+      
+      if (anime.fetchStatus === 'success' && anime.matchedTitle && anime.matchedTitle !== anime.name) {
+        matchEl.textContent = `Matched: ${anime.matchedTitle}`;
+      }
+      
+      if (anime.url) {
+        card.style.cursor = 'pointer';
+        card.onclick = () => window.open(anime.url, '_blank');
+      }
+    }
+    
+    function extractYear(name) {
+      const match = name.match(/(?:19|20)\d{2}/);
+      return match ? parseInt(match[0]) : null;
+    }
+    
+    function fuzzyMatch(text, filter) {
+      if (!filter) return true;
+      
+      text = text.toLowerCase();
+      filter = filter.toLowerCase();
+      
+      if (text.includes(filter)) return true;
+      
+      let filterIdx = 0;
+      for (let i = 0; i < text.length && filterIdx < filter.length; i++) {
+        if (text[i] === filter[filterIdx]) {
+          filterIdx++;
+        }
+      }
+      
+      return filterIdx === filter.length;
+    }
+    
+    function applyFilters() {
+      const cards = $$('.anime-card');
+      let visibleCount = 0;
+      
+      cards.forEach(card => {
+        const name = card.dataset.name || '';
+        const matched = card.dataset.matched || '';
+        const matches = !currentFilter || 
+          fuzzyMatch(name, currentFilter) || 
+          fuzzyMatch(matched, currentFilter);
+        
+        card.classList.toggle('hidden', !matches);
+        if (matches) visibleCount++;
+      });
+      
+      $$('.section').forEach(section => {
+        const visibleCards = section.querySelectorAll('.anime-card:not(.hidden)');
+        section.classList.toggle('filter-hidden', currentFilter && visibleCards.length === 0);
+      });
+      
+      const totalAnime = animeData.flatMap(s => s.anime).length;
+      statsEl.textContent = `${visibleCount} / ${totalAnime} anime`;
+    }
+    
+
+    
+    function render() {
+      container.innerHTML = '';
+      
+      for (const section of animeData) {
+        const sectionEl = document.createElement('div');
+        sectionEl.className = 'section';
+        
+        const headerEl = document.createElement('div');
+        headerEl.className = 'section-header';
+        headerEl.innerHTML = `
+          <span class="toggle">▼</span>
+          <h3>${section.name}</h3>
+          <span class="count">(${section.anime.length})</span>
+        `;
+        
+        headerEl.addEventListener('click', () => {
+          sectionEl.classList.toggle('collapsed');
+        });
+        
+        const gridEl = document.createElement('div');
+        gridEl.className = 'anime-grid';
+        
+        for (let i = 0; i < section.anime.length; i++) {
+          const anime = section.anime[i];
+          const card = document.createElement('div');
+          card.className = 'anime-card';
+          card.dataset.name = anime.name;
+          card.dataset.matched = anime.matchedTitle || '';
+          card.dataset.idx = animeData.slice(0, animeData.indexOf(section)).reduce((a, s) => a + s.anime.length, 0) + i;
+          
+          card.innerHTML = `
+            <div class="cover">
+              <div class="spinner"></div>
+              <img>
+              <div class="placeholder">🎬</div>
+            </div>
+            <div class="info">
+              <div class="title">${anime.name}</div>
+              <div class="match-info"></div>
+            </div>
+          `;
+          
+          gridEl.appendChild(card);
+        }
+        
+        sectionEl.appendChild(headerEl);
+        sectionEl.appendChild(gridEl);
+        container.appendChild(sectionEl);
+      }
+      
+      applyFilters();
+      setupObserver();
+    }
+  </script>
+</body>
+</html>
